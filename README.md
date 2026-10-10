@@ -58,24 +58,6 @@ C로 작성한 데스크톱 미디어 플레이어의 초기 버전입니다. FF
 
 설정 → 단축키: 행을 클릭하고 새 키를 누릅니다. 충돌 시 Enter로 교체하거나 Esc로 취소합니다. 검색은 페이지에서 입력하며 휠 또는 오른쪽 스크롤바로 스크롤합니다. Win 키 조합은 OS용으로 남겨둡니다. 설정의 언어/테마 항목은 드롭다운으로 선택합니다.
 
-## 빌드와 배포
-
-Visual Studio C/C++ x64 도구, Windows SDK와 포함된 CMake/Ninja가 필요합니다.
-
-```powershell
-.\scripts\setup-deps.ps1
-.\scripts\build.ps1 -Configuration Release
-.\scripts\build.ps1 -Configuration Debug
-.\scripts\package.ps1
-.\scripts\build-installer.ps1
-```
-
-결과는 `build/Release/ZM.exe`, `build/Debug/ZM.exe`입니다. 의존성 설치는 FFmpeg n9.0.2-22, SDL2 2.32.10, SDL2_ttf 2.24.0의 고정 URL과 SHA256을 사용합니다. [라이선스와 출처](THIRD_PARTY.md)를 참고하세요.
-
-빌드가 CTest를 실행합니다. test-media/sample.mp4와 multiaudio.mkv가 존재하면 실제 재생 회귀 테스트도 등록합니다. `ZM.exe --smoke 3 "파일 경로"`는 3초 후 검사 결과를 종료 코드로 반환하고, `--capture 경로.bmp`로 검증 화면을 저장합니다.
-
-설치기 빌드에는 Inno Setup 6 컴파일러가 필요합니다. 기본 설치 위치 또는 `third_party/inno/ISCC.exe`를 자동으로 찾습니다. 설치기는 한국어/영어/일본어로 표시할 수 있습니다.
-
 ## 구조와 현재 상태
 
 [구조 설명](docs/architecture.md), [검증 결과](docs/test-results.md), [전체 작업지시서](docs/development-spec.md)를 참고하세요. 소스는 core/player/media/video/subtitle/playlist/input/i18n/ui/platform 모듈로 분리했습니다.
