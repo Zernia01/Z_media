@@ -64,13 +64,13 @@ void zm_ui_open_subtitle(UI *u) {
     if (path) { zm_player_subtitle(&u->player, path, -1); SDL_free(path); }
 }
 void zm_ui_reload_fonts(UI *u) {
-    char *regular=zm_font_path(u->config.language,u->config.rounded_font,0);
+    char *regular=zm_font_path(u->config.language,u->config.rounded_font,1);
     char *bold=zm_font_path(u->config.language,u->config.rounded_font,1);
     /* Keep Hangul coverage even when the active UI uses a Japanese/Chinese font. */
-    char *fallback_path=zm_font_path("ko",0,0);
-    char *cjk_path=zm_font_path("zh-CN",0,0);
+    char *fallback_path=zm_font_path("ko",0,1);
+    char *cjk_path=zm_font_path("zh-CN",0,1);
     TTF_Font *body=regular?TTF_OpenFont(regular,16):NULL;
-    TTF_Font *title=bold?TTF_OpenFont(bold,24):NULL;
+    TTF_Font *title=bold?TTF_OpenFont(bold,28):NULL;
     TTF_Font *strong=bold?TTF_OpenFont(bold,16):NULL;
     TTF_Font *fallback=fallback_path?TTF_OpenFont(fallback_path,16):NULL;
     TTF_Font *cjk=cjk_path?TTF_OpenFont(cjk_path,16):NULL;

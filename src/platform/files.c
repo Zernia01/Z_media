@@ -98,7 +98,7 @@ char *zm_font_path(const char *language, int rounded, int bold) {
     char path[32768];
     GetWindowsDirectoryA(windows, sizeof(windows));
     if (!strcmp(language, "ja") || !strcmp(language, "zh-CN") || !strcmp(language, "zh-TW")) {
-        SDL_snprintf(path, sizeof(path), "%s/Fonts/%s", windows, !strcmp(language,"ja") ? "YuGothM.ttc" : !strcmp(language,"zh-CN") ? "msyh.ttc" : "msjh.ttc");
+        SDL_snprintf(path, sizeof(path), "%s/Fonts/%s", windows, !strcmp(language,"ja") ? (bold?"YuGothB.ttc":"YuGothM.ttc") : !strcmp(language,"zh-CN") ? (bold?"msyhbd.ttc":"msyh.ttc") : (bold?"msjhbd.ttc":"msjh.ttc"));
         if (GetFileAttributesA(path) != INVALID_FILE_ATTRIBUTES) return SDL_strdup(path);
     }
     SDL_snprintf(path, sizeof(path), "%s/Fonts/%s", windows,bold?"malgunbd.ttf":"malgun.ttf");

@@ -65,6 +65,8 @@ static void status(ZMUpdater *u,ZMUpdateStatus value) {
 #include <winhttp.h>
 #include <bcrypt.h>
 #include <shellapi.h>
+#define ZM_WIDE_(value) L##value
+#define ZM_WIDE(value) ZM_WIDE_(value)
 static wchar_t *wide(const char *text) {
     int count=MultiByteToWideChar(CP_UTF8,MB_ERR_INVALID_CHARS,text,-1,NULL,0);
     wchar_t *result=count?SDL_malloc((size_t)count*sizeof(wchar_t)):NULL;
@@ -94,7 +96,7 @@ static int get(ZMUpdater *u,const char *url,FILE *file,char *text,size_t capacit
     parts.dwStructSize=sizeof(parts); parts.lpszHostName=host; parts.dwHostNameLength=256;
     parts.lpszUrlPath=route; parts.dwUrlPathLength=1024;
     if(!address || !WinHttpCrackUrl(address,0,0,&parts) || parts.nScheme!=INTERNET_SCHEME_HTTPS)goto done;
-    session=WinHttpOpen(L"Zernia media/" L"0.1.0",WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,WINHTTP_NO_PROXY_NAME,WINHTTP_NO_PROXY_BYPASS,0);
+    session=WinHttpOpen(L"Zernia media/" ZM_WIDE(ZM_VERSION),WINHTTP_ACCESS_TYPE_AUTOMATIC_PROXY,WINHTTP_NO_PROXY_NAME,WINHTTP_NO_PROXY_BYPASS,0);
     if(!session)goto done;
     WinHttpSetTimeouts(session,3000,3000,5000,5000);
     connection=WinHttpConnect(session,host,parts.nPort,0); if(!connection)goto done;
