@@ -12,6 +12,7 @@ typedef struct UI {
     TTF_Font *font, *heading, *bold, *fallback, *cjk;
     ZMPlayer player;
     ZMUpdater updater;
+    char update_notified_version[32],update_install_pending[32];
     ZMConfig config;
     ZMPlaylist playlist;
     ZMShortcuts shortcuts;

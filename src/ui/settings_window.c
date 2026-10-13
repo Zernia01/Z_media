@@ -126,6 +126,8 @@ static void content(UI *u,SettingsLayout l,int x,int mouse_y,int apply) {
         if(check_row(u,l,y,"update_auto_check",NULL,u->config.update_auto_check,x,mouse_y,apply))u->config.update_auto_check=!u->config.update_auto_check;
         y+=44;
         if(check_row(u,l,y,"update_auto_download",NULL,u->config.update_auto_download,x,mouse_y,apply))u->config.update_auto_download=!u->config.update_auto_download;
+        y+=44;
+        if(check_row(u,l,y,"update_notify",NULL,u->config.update_notify,x,mouse_y,apply))u->config.update_notify=!u->config.update_notify;
         y+=60; y=update_controls(u,l,y,x,mouse_y,apply);
     } else if(u->settings==4) {
         section(u,l.view.x,y,"playback_display",apply); y+=40;

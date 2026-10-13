@@ -440,6 +440,45 @@ static void capture(UI *u, const char *path) {
     }
     SDL_RenderPresent(u->renderer);
 }
+static void update_notifications(UI *u) {
+    ZMUpdateState update;
+    zm_update_snapshot(&u->updater,&update);
+    if(u->update_install_pending[0] && update.status==ZM_UPDATE_FAILED)u->update_install_pending[0]='\0';
+    if(u->dragging || u->scrollbar_drag || u->capturing>=0 || !(SDL_GetWindowFlags(u->window)&SDL_WINDOW_INPUT_FOCUS))return;
+    if(u->update_install_pending[0] && update.status==ZM_UPDATE_READY) {
+        int approved=!strcmp(u->update_install_pending,update.version);
+        u->update_install_pending[0]='\0';
+        if(approved) {
+            if(zm_update_install(&u->updater))u->running=0;
+            else SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"Zernia media",zm_text("update_failed"),u->window);
+            return;
+        }
+    }
+    if(!u->config.update_notify || (update.status!=ZM_UPDATE_READY && update.status!=ZM_UPDATE_AVAILABLE) ||
+       !update.version[0] || !strcmp(u->update_notified_version,update.version))return;
+    SDL_strlcpy(u->update_notified_version,update.version,sizeof(u->update_notified_version));
+    ZMSnapshot playback; zm_player_snapshot(&u->player,&playback);
+    int resume=playback.loaded && !playback.paused && !playback.ended;
+    if(resume)zm_player_toggle_pause(&u->player);
+    char message[512]; int selected=0;
+    SDL_snprintf(message,sizeof(message),"%s\n\nZM %s",zm_text("update_prompt"),update.version);
+    const SDL_MessageBoxButtonData buttons[]={
+        {SDL_MESSAGEBOX_BUTTON_RETURNKEY_DEFAULT,1,zm_text("update_yes")},
+        {SDL_MESSAGEBOX_BUTTON_ESCAPEKEY_DEFAULT,0,zm_text("update_later")}
+    };
+    const SDL_MessageBoxData dialog={SDL_MESSAGEBOX_INFORMATION,u->window,zm_text("updates"),message,2,buttons,NULL};
+    if(SDL_ShowMessageBox(&dialog,&selected)<0)selected=0;
+    if(selected==1) {
+        if(update.status==ZM_UPDATE_READY) {
+            if(zm_update_install(&u->updater))u->running=0;
+            else SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR,"Zernia media",zm_text("update_failed"),u->window);
+        } else {
+            SDL_strlcpy(u->update_install_pending,update.version,sizeof(u->update_install_pending));
+            zm_update_check(&u->updater,1);
+        }
+    }
+    if(resume && u->running)zm_player_toggle_pause(&u->player);
+}
 int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
     UI u = {0};
     Uint64 start;
@@ -610,6 +649,8 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
             default: break;
             }
         }
+        if(u.running && !smoke_seconds)update_notifications(&u);
+        if(!u.running)break;
         present_video(&u);
         if (smoke_seconds > 0 && SDL_GetTicks64() - start >= (Uint64)smoke_seconds * 1000u) {
             if (capture_path) capture(&u, capture_path);

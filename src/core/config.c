@@ -21,6 +21,7 @@ void zm_config_load(ZMConfig *c) {
     c->fullscreen_hide_ui = c->play_during_move = 1;
     c->auto_open_folder = 1;
     c->update_auto_check=c->update_auto_download=1;
+    c->update_notify=1;
     f = config_file("r");
     if (!f) return;
     while (fgets(line, sizeof(line), f)) {
@@ -39,6 +40,7 @@ void zm_config_load(ZMConfig *c) {
         else if (sscanf(line, "auto_open_folder=%d", &value) == 1 && value >= 0 && value <= 1) c->auto_open_folder = value;
         else if (sscanf(line,"update_auto_check=%d",&value)==1 && value>=0 && value<=1)c->update_auto_check=value;
         else if (sscanf(line,"update_auto_download=%d",&value)==1 && value>=0 && value<=1)c->update_auto_download=value;
+        else if (sscanf(line,"update_notify=%d",&value)==1 && value>=0 && value<=1)c->update_notify=value;
         else if (strncmp(line, "language=", 9) == 0) {
             char *lang = line + 9;
             lang[strcspn(lang, "\r\n")] = '\0';
@@ -58,5 +60,6 @@ void zm_config_save(const ZMConfig *c) {
     fprintf(f,"fullscreen_hide_ui=%d\nplay_during_move=%d\n",c->fullscreen_hide_ui,c->play_during_move);
     fprintf(f,"auto_open_folder=%d\n",c->auto_open_folder);
     fprintf(f,"update_auto_check=%d\nupdate_auto_download=%d\n",c->update_auto_check,c->update_auto_download);
+    fprintf(f,"update_notify=%d\n",c->update_notify);
     fclose(f);
 }

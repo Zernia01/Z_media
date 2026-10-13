@@ -10,6 +10,7 @@ typedef struct ZMConfig {
     int fullscreen_hide_ui, play_during_move;
     int auto_open_folder;
     int update_auto_check,update_auto_download;
+    int update_notify;
 } ZMConfig;
 void zm_config_load(ZMConfig *c);
 void zm_config_save(const ZMConfig *c);
