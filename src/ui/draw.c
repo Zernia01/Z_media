@@ -1,6 +1,7 @@
 #include "zm/app.h"
 #include <string.h>
 #include <math.h>
+#include <stdint.h>
 static SDL_Point pointer={-1,-1};
 static const char *tooltip_label;
 static SDL_Rect tooltip_rect;
@@ -38,8 +39,79 @@ typedef struct TextCache {
     Uint64 used;
 } TextCache;
 static TextCache cache[128];
-static TTF_Font *fallback_font;
-void zm_draw_set_fallback(TTF_Font *font) { fallback_font=font; }
+static TTF_Font *fallback_fonts[ZM_FALLBACK_COUNT],*heading_fonts[ZM_FALLBACK_COUNT],*heading_base;
+void zm_draw_set_fallback(TTF_Font *font) {
+    memset(fallback_fonts,0,sizeof(fallback_fonts)); memset(heading_fonts,0,sizeof(heading_fonts));
+    fallback_fonts[0]=font; heading_base=NULL;
+}
+void zm_draw_set_fallbacks(TTF_Font *heading,TTF_Font **body,TTF_Font **titles) {
+    memcpy(fallback_fonts,body,sizeof(fallback_fonts)); memcpy(heading_fonts,titles,sizeof(heading_fonts)); heading_base=heading;
+}
+static TTF_Font *glyph_font(TTF_Font *base,Uint32 cp) {
+    TTF_Font **pool=base==heading_base?heading_fonts:fallback_fonts; int i;
+    if(TTF_GlyphIsProvided32(base,cp))return base;
+    for(i=0;i<ZM_FALLBACK_COUNT;++i)if(pool[i] && TTF_GlyphIsProvided32(pool[i],cp))return pool[i];
+    return base;
+}
+int zm_draw_text_supported(TTF_Font *font,const char *text) {
+    if(!font || !text)return 0;
+    Uint32 *points=(Uint32 *)SDL_iconv_string("UTF-32LE","UTF-8",text,strlen(text)+1); size_t i; int result=1;
+    if(!font || !points) { SDL_free(points); return 0; }
+    for(i=0;points[i];++i)if(!TTF_GlyphIsProvided32(glyph_font(font,points[i]),points[i])) { result=0; break; }
+    SDL_free(points); return result;
+}
+static size_t utf8_put(char *out,Uint32 cp) {
+    if(cp<0x80) { out[0]=(char)cp; return 1; }
+    if(cp<0x800) { out[0]=(char)(0xc0|(cp>>6)); out[1]=(char)(0x80|(cp&63)); return 2; }
+    if(cp<0x10000) { out[0]=(char)(0xe0|(cp>>12)); out[1]=(char)(0x80|((cp>>6)&63)); out[2]=(char)(0x80|(cp&63)); return 3; }
+    out[0]=(char)(0xf0|(cp>>18)); out[1]=(char)(0x80|((cp>>12)&63)); out[2]=(char)(0x80|((cp>>6)&63)); out[3]=(char)(0x80|(cp&63)); return 4;
+}
+SDL_Surface *zm_draw_text_surface(TTF_Font *font,const char *text,SDL_Color color) {
+    typedef struct Run { SDL_Surface *surface; int ascent; } Run;
+    Uint32 *points; Run *runs=NULL; char *chunk=NULL; SDL_Surface *result=NULL;
+    size_t n=0,index=0,count=0,i; int width=0,ascent=0,descent=0;
+    if(!font || !text || !*text)return NULL;
+    points=(Uint32 *)SDL_iconv_string("UTF-32LE","UTF-8",text,strlen(text)+1);
+    if(!points)return NULL;
+    while(points[n])++n;
+    if(n>(SIZE_MAX-1)/4)goto done;
+    runs=SDL_calloc(n,sizeof(*runs)); chunk=SDL_malloc(n*4+1);
+    if(!runs || !chunk)goto done;
+    while(index<n) {
+        TTF_Font *selected=glyph_font(font,points[index]); size_t used=0;
+        do { used+=utf8_put(chunk+used,points[index++]); } while(index<n && glyph_font(font,points[index])==selected);
+        chunk[used]='\0';
+        runs[count].surface=TTF_RenderUTF8_Blended(selected,chunk,color);
+        if(!runs[count].surface)goto done;
+        runs[count].ascent=TTF_FontAscent(selected);
+        width+=runs[count].surface->w;
+        if(runs[count].ascent>ascent)ascent=runs[count].ascent;
+        if(runs[count].surface->h-runs[count].ascent>descent)descent=runs[count].surface->h-runs[count].ascent;
+        ++count;
+    }
+    result=SDL_CreateRGBSurfaceWithFormat(0,width>0?width:1,ascent+descent>0?ascent+descent:1,32,SDL_PIXELFORMAT_ARGB8888);
+    if(result) {
+        SDL_FillRect(result,NULL,0); width=0;
+        SDL_SetSurfaceBlendMode(result,SDL_BLENDMODE_BLEND);
+        for(i=0;i<count;++i) {
+            SDL_Rect rect={width,ascent-runs[i].ascent,0,0};
+            SDL_SetSurfaceBlendMode(runs[i].surface,SDL_BLENDMODE_NONE);
+            SDL_BlitSurface(runs[i].surface,NULL,result,&rect); width+=runs[i].surface->w;
+        }
+    }
+done:
+    for(i=0;i<count;++i)SDL_FreeSurface(runs[i].surface);
+    SDL_free(runs); SDL_free(chunk); SDL_free(points); return result;
+}
+int zm_draw_text_size(TTF_Font *font,const char *text,int *width,int *height) {
+    int i; SDL_Surface *surface;
+    for(i=0;i<128;++i)if(cache[i].texture && cache[i].font==font && !strcmp(cache[i].text,text)) {
+        *width=cache[i].width; *height=cache[i].height; return 0;
+    }
+    surface=zm_draw_text_surface(font,text,(SDL_Color){255,255,255,255});
+    if(!surface) { *width=*height=0; return -1; }
+    *width=surface->w; *height=surface->h; SDL_FreeSurface(surface); return 0;
+}
 void zm_draw_clear_cache(void) {
     int i;
     for (i = 0; i < 128; ++i) SDL_DestroyTexture(cache[i].texture);
@@ -62,20 +134,7 @@ void zm_draw_text(SDL_Renderer *r, TTF_Font *font, const char *text, int x, int 
         rect = (SDL_Rect){x, y, entry->width, entry->height};
         entry->used = SDL_GetTicks64(); SDL_RenderCopy(r, entry->texture, NULL, &rect); return;
     }
-    {
-        TTF_Font *render_font=font;
-        if(fallback_font && fallback_font!=font) {
-            char *utf32=SDL_iconv_string("UTF-32LE","UTF-8",text,strlen(text)+1);
-            if(utf32) {
-                size_t n=0;
-                while(((Uint32 *)utf32)[n]) {
-                    if(!TTF_GlyphIsProvided32(font,((Uint32 *)utf32)[n++])) { render_font=fallback_font; break; }
-                }
-                SDL_free(utf32);
-            }
-        }
-        surface = TTF_RenderUTF8_Blended(render_font, text, color);
-    }
+    surface=zm_draw_text_surface(font,text,color);
     if (!surface) return;
     texture = SDL_CreateTextureFromSurface(r, surface);
     rect.x = x; rect.y = y; rect.w = surface->w; rect.h = surface->h;
@@ -100,7 +159,7 @@ void zm_draw_button(SDL_Renderer *r, TTF_Font *font, SDL_Rect rect, const char *
     else if (light) SDL_SetRenderDrawColor(r, 221, 226, 237, 255);
     else SDL_SetRenderDrawColor(r, 39, 45, 61, 255);
     zm_draw_round_rect(r, rect, 7);
-    TTF_SizeUTF8(font, label, &width, &height);
+    zm_draw_text_size(font, label, &width, &height);
     {
         SDL_Rect previous, clip=rect;
         SDL_bool clipped=SDL_RenderIsClipEnabled(r);
@@ -123,7 +182,7 @@ void zm_draw_tooltip(SDL_Renderer *r,TTF_Font *font,int width,int height,int lig
         SDL_strlcpy(previous_tip,tooltip_label,sizeof(previous_tip)); previous_rect=tooltip_rect; tooltip_since=SDL_GetTicks64();
     }
     if(SDL_GetTicks64()-tooltip_since<400)return;
-    TTF_SizeUTF8(font,tooltip_label,&w,&h);
+    zm_draw_text_size(font,tooltip_label,&w,&h);
     box=(SDL_Rect){tooltip_rect.x+(tooltip_rect.w-w-20)/2,tooltip_rect.y-h-22,w+20,h+14};
     if(box.y<8)box.y=tooltip_rect.y+tooltip_rect.h+8;
     if(box.x<8)box.x=8; if(box.x+box.w>width-8)box.x=width-box.w-8;

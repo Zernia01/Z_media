@@ -83,6 +83,26 @@ char *zm_open_dialog(SDL_Window *window) {
     (void)window; return NULL;
 #endif
 }
+char *zm_font_fallback_path(int index) {
+    if(index==0)return zm_font_path("ko",0,1);
+    if(index==1) {
+        char *base=SDL_GetBasePath(); char path[32768];
+        if(!base)return NULL;
+        SDL_snprintf(path,sizeof(path),"%sfonts/NotoSansCJKsc-Bold.otf",base); SDL_free(base);
+        return SDL_strdup(path);
+    }
+#ifdef _WIN32
+    const char *names[]={"seguiemj.ttf","simsunb.ttf","SimsunExtG.ttf"};
+    char windows[32768],path[32768];
+    if(index<2 || index>=ZM_FALLBACK_COUNT)return NULL;
+    GetWindowsDirectoryA(windows,sizeof(windows));
+    SDL_snprintf(path,sizeof(path),"%s/Fonts/%s",windows,names[index-2]);
+    if(GetFileAttributesA(path)!=INVALID_FILE_ATTRIBUTES)return SDL_strdup(path);
+#else
+    (void)index;
+#endif
+    return NULL;
+}
 char *zm_font_path(const char *language, int rounded, int bold) {
     if(rounded && (!strcmp(language,"ko") || !strcmp(language,"en"))) {
         char *base=SDL_GetBasePath();

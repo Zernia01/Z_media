@@ -19,6 +19,8 @@ void zm_i18n_load(const char *language);
 char *zm_open_dialog(SDL_Window *window);
 char **zm_open_files(SDL_Window *window, int *count);
 char *zm_font_path(const char *language, int rounded, int bold);
+#define ZM_FALLBACK_COUNT 5
+char *zm_font_fallback_path(int index);
 void zm_window_set_icon(SDL_Window *window);
 int zm_window_set_move_callback(SDL_Window *window, void (*callback)(void *), void *data);
 void zm_window_clear_move_callback(SDL_Window *window);
@@ -32,6 +34,10 @@ void zm_draw_button(SDL_Renderer *r, TTF_Font *font, SDL_Rect rect, const char *
 void zm_draw_clear_cache(void);
 void zm_draw_round_rect(SDL_Renderer *r, SDL_Rect rect, int radius);
 void zm_draw_set_fallback(TTF_Font *font);
+void zm_draw_set_fallbacks(TTF_Font *heading,TTF_Font **body_fonts,TTF_Font **heading_fonts);
+int zm_draw_text_supported(TTF_Font *font,const char *text);
+int zm_draw_text_size(TTF_Font *font,const char *text,int *width,int *height);
+SDL_Surface *zm_draw_text_surface(TTF_Font *font,const char *text,SDL_Color color);
 void zm_draw_set_pointer(int x, int y);
 int zm_draw_hovered(SDL_Renderer *r, SDL_Rect rect);
 typedef enum ZMIcon {

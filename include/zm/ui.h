@@ -10,6 +10,7 @@ typedef struct UI {
     SDL_Renderer *renderer;
     SDL_Texture *video;
     TTF_Font *font, *heading, *bold, *fallback, *cjk;
+    TTF_Font *glyph_fonts[ZM_FALLBACK_COUNT],*heading_glyph_fonts[ZM_FALLBACK_COUNT];
     ZMPlayer player;
     ZMUpdater updater;
     char update_notified_version[32],update_install_pending[32];

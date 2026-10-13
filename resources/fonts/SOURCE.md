@@ -8,4 +8,4 @@ Unmodified NanumSquareRound Regular and Bold, distributed by NAVER.
 - License: SIL Open Font License 1.1; see LICENSE.txt.
 - Official license reference: https://help.naver.com/service/11029/contents/18088?lang=ko&osType=PC
 
-Korean and English use this rounded font by default. Other languages and missing glyphs use installed system fonts.
+Korean and English use this rounded font by default. Missing characters use per-character fallback, including bundled Noto CJK and installed system fonts; see NOTO-SOURCE.md.

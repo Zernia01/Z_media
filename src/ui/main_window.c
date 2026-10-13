@@ -66,31 +66,32 @@ void zm_ui_open_subtitle(UI *u) {
 void zm_ui_reload_fonts(UI *u) {
     char *regular=zm_font_path(u->config.language,u->config.rounded_font,1);
     char *bold=zm_font_path(u->config.language,u->config.rounded_font,1);
-    /* Keep Hangul coverage even when the active UI uses a Japanese/Chinese font. */
-    char *fallback_path=zm_font_path("ko",0,1);
-    char *cjk_path=zm_font_path("zh-CN",0,1);
     TTF_Font *body=regular?TTF_OpenFont(regular,16):NULL;
     TTF_Font *title=bold?TTF_OpenFont(bold,28):NULL;
     TTF_Font *strong=bold?TTF_OpenFont(bold,16):NULL;
-    TTF_Font *fallback=fallback_path?TTF_OpenFont(fallback_path,16):NULL;
-    TTF_Font *cjk=cjk_path?TTF_OpenFont(cjk_path,16):NULL;
+    TTF_Font *glyphs[ZM_FALLBACK_COUNT]={0},*titles[ZM_FALLBACK_COUNT]={0};
+    int i;
+    for(i=0;i<ZM_FALLBACK_COUNT;++i) {
+        char *path=zm_font_fallback_path(i);
+        if(path) { glyphs[i]=TTF_OpenFont(path,16); titles[i]=TTF_OpenFont(path,28); SDL_free(path); }
+    }
     SDL_free(regular); SDL_free(bold);
-    SDL_free(fallback_path);
-    SDL_free(cjk_path);
-    if(body && title && strong) {
+    if(body && title && strong && glyphs[1] && titles[1]) {
         zm_draw_clear_cache();
         if(u->font)TTF_CloseFont(u->font);
         if(u->heading)TTF_CloseFont(u->heading);
         if(u->bold)TTF_CloseFont(u->bold);
-        if(u->fallback)TTF_CloseFont(u->fallback);
-        if(u->cjk)TTF_CloseFont(u->cjk);
+        for(i=0;i<ZM_FALLBACK_COUNT;++i) {
+            if(u->glyph_fonts[i])TTF_CloseFont(u->glyph_fonts[i]);
+            if(u->heading_glyph_fonts[i])TTF_CloseFont(u->heading_glyph_fonts[i]);
+        }
         u->font=body; u->heading=title; u->bold=strong;
-        u->fallback=fallback; zm_draw_set_fallback(fallback);
-        u->cjk=cjk;
+        memcpy(u->glyph_fonts,glyphs,sizeof(glyphs)); memcpy(u->heading_glyph_fonts,titles,sizeof(titles));
+        u->fallback=glyphs[0]; u->cjk=glyphs[1];
+        zm_draw_set_fallbacks(title,glyphs,titles);
     } else {
         if(body)TTF_CloseFont(body); if(title)TTF_CloseFont(title); if(strong)TTF_CloseFont(strong);
-        if(fallback)TTF_CloseFont(fallback);
-        if(cjk)TTF_CloseFont(cjk);
+        for(i=0;i<ZM_FALLBACK_COUNT;++i) { if(glyphs[i])TTF_CloseFont(glyphs[i]); if(titles[i])TTF_CloseFont(titles[i]); }
     }
 }
 void zm_ui_set_language(UI *u,const char *language) {
@@ -308,9 +309,9 @@ static void render(UI *u,int present) {
         color(u, 108, 87, 230); rect = (SDL_Rect){area.x + area.w / 2 - 32, area.y + area.h / 2 - 90, 64, 52};
         SDL_RenderFillRect(u->renderer, &rect);
         zm_draw_text(u->renderer, u->heading, "ZM", rect.x + 9, rect.y + 6, white);
-        TTF_SizeUTF8(u->heading, message, &text_width, &text_height);
+        zm_draw_text_size(u->heading, message, &text_width, &text_height);
         zm_draw_text(u->renderer, u->heading, message, area.x + (area.w - text_width) / 2, area.y + area.h / 2 - 14, white);
-        TTF_SizeUTF8(u->font, zm_text("drop"), &text_width, &text_height);
+        zm_draw_text_size(u->font, zm_text("drop"), &text_width, &text_height);
         zm_draw_text(u->renderer, u->font, zm_text("drop"), area.x + (area.w - text_width) / 2, area.y + area.h / 2 + 38, gray);
     }
     if (!hidden) {
@@ -684,8 +685,10 @@ cleanup:
     if (u.heading) TTF_CloseFont(u.heading);
     if (u.bold) TTF_CloseFont(u.bold);
     zm_draw_set_fallback(NULL);
-    if (u.fallback) TTF_CloseFont(u.fallback);
-    if (u.cjk) TTF_CloseFont(u.cjk);
+    for(int i=0;i<ZM_FALLBACK_COUNT;++i) {
+        if(u.glyph_fonts[i])TTF_CloseFont(u.glyph_fonts[i]);
+        if(u.heading_glyph_fonts[i])TTF_CloseFont(u.heading_glyph_fonts[i]);
+    }
     SDL_DestroyRenderer(u.renderer); SDL_DestroyWindow(u.window);
     TTF_Quit(); SDL_Quit(); return result;
 }
