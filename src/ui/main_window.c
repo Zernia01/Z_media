@@ -305,7 +305,7 @@ static void render(UI *u,int present) {
         SDL_Color white = {232, 234, 248, 255};
         SDL_Color gray = {145, 151, 175, 255};
         int text_width, text_height;
-        const char *message = u->state.loading ? zm_text("loading") : u->state.loaded && u->state.has_audio ? zm_text("audio") : zm_text("welcome");
+        const char *message = u->state.loading || (u->state.loaded && u->state.has_video) ? zm_text("loading") : u->state.loaded && u->state.has_audio ? zm_text("audio") : zm_text("welcome");
         color(u, 108, 87, 230); rect = (SDL_Rect){area.x + area.w / 2 - 32, area.y + area.h / 2 - 90, 64, 52};
         SDL_RenderFillRect(u->renderer, &rect);
         zm_draw_text(u->renderer, u->heading, "ZM", rect.x + 9, rect.y + 6, white);
@@ -400,8 +400,13 @@ static void present_video(UI *u) {
     SDL_GetWindowSize(u->window,&u->width,&u->height);
     SDL_RenderSetLogicalSize(u->renderer,u->width,u->height);
     zm_player_snapshot(&u->player,&u->state);
+    /* A seek invalidates queued frames, not the last displayed image. Clear
+       that image only when opening another media session (including reopen). */
+    if(u->media_generation!=u->state.media_generation) {
+        SDL_DestroyTexture(u->video); u->video=NULL; u->media_generation=u->state.media_generation;
+    }
     if(u->generation!=u->state.generation) {
-        SDL_DestroyTexture(u->video); u->video=NULL; u->generation=u->state.generation; u->handled_end=0;
+        u->generation=u->state.generation; u->handled_end=0;
     }
     if(u->state.ended && !u->handled_end && !u->state.loading && !u->dragging) { u->handled_end=1; next_file(u,1,1); }
     /* Only the newest due frame can appear in this refresh. Avoid uploading
@@ -426,6 +431,32 @@ static void present_video(UI *u) {
 static void move_frame(void *data) {
     UI *u=data;
     if(u->running && u->config.play_during_move)present_video(u);
+}
+/* Reproduce the interval after a seek flush and before its first decoded frame.
+   Stop the worker so a fast decoder cannot accidentally hide the regression. */
+static int smoke_seek_display(UI *u) {
+    SDL_Texture *before=u->video;
+    unsigned uploads=u->presented_frames;
+    int paused;
+    if(!before)return 0;
+    SDL_AtomicSet(&u->player.quit,1);
+    SDL_WaitThread(u->player.thread,NULL); u->player.thread=NULL;
+    for(paused=0;paused<=1;++paused) {
+        SDL_LockMutex(u->player.mutex);
+        zm_player_clear_locked(&u->player); ++u->player.state.generation;
+        u->player.state.paused=paused; u->player.state.ended=0;
+        SDL_UnlockMutex(u->player.mutex);
+        u->handled_end=1;
+        present_video(u);
+        if(u->video!=before || u->presented_frames!=uploads || u->handled_end)return 0;
+    }
+    SDL_LockMutex(u->player.mutex);
+    ++u->player.state.media_generation; ++u->player.state.generation;
+    u->player.state.has_video=0; u->player.state.has_audio=1;
+    SDL_UnlockMutex(u->player.mutex);
+    present_video(u);
+    SDL_Log("Seek display: retained during playing/paused seek; cleared for new audio media");
+    return u->video==NULL;
 }
 static void capture(UI *u, const char *path) {
     SDL_Surface *surface;
@@ -488,6 +519,7 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
     double smoke_target=0;
     int smoke_auto_folder=smoke_seconds?smoke_option("ZM_SMOKE_AUTO_FOLDER",-1):-1;
     int smoke_edge=smoke_seconds?smoke_option("ZM_SMOKE_FULLSCREEN_EDGE",0):0,edge_tested=0;
+    int smoke_seek=smoke_seconds?smoke_option("ZM_SMOKE_SEEK_DISPLAY",0):0;
     if(smoke_seconds) {
         smoke_controls=smoke_option("ZM_SMOKE_CONTROLS",0);
         smoke_folder=smoke_option("ZM_SMOKE_FOLDER_CLICK",0);
@@ -662,6 +694,7 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
             if(smoke_move && !move_tested)result=5;
             if(smoke_auto_folder>=0 && (!u.folder_mode || u.panel!=(smoke_auto_folder!=0)))result=6;
             if(smoke_edge && (!edge_tested || !controls_hidden(&u)))result=7;
+            if(smoke_seek && !smoke_seek_display(&u))result=8;
             u.running = 0;
         }
         /* Vsync already paces normal rendering. Sleep only for a very fast

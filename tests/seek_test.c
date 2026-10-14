@@ -63,9 +63,9 @@ int main(int argc,char **argv) {
     if(!state.loaded || !state.video_frames || !state.audio_frames || state.error[0])failed=1;
     zm_player_toggle_pause(&player);
     for(i=0;i<6 && !failed;++i) {
-        unsigned generation;
+        unsigned generation,media_generation;
         int received=0;
-        zm_player_snapshot(&player,&state); generation=state.generation;
+        zm_player_snapshot(&player,&state); generation=state.generation; media_generation=state.media_generation;
         start=SDL_GetTicks64(); zm_player_seek(&player,targets[i]);
         do {
             ZMVideoFrame frame;
@@ -78,7 +78,7 @@ int main(int argc,char **argv) {
             }
             SDL_Delay(1);
         } while(SDL_GetTicks64()-start<10000 && !state.error[0]);
-        if(!received || state.error[0])failed=1;
+        if(!received || state.error[0] || state.media_generation!=media_generation)failed=1;
     }
     if(!failed) {
         unsigned audio_before=state.audio_frames;
@@ -90,6 +90,18 @@ int main(int argc,char **argv) {
         } while(SDL_GetTicks64()-start<250);
         zm_player_snapshot(&player,&state);
         if(state.position<=70.1 || state.audio_frames<=audio_before || state.error[0])failed=1;
+    }
+    if(!failed) {
+        unsigned media_generation=state.media_generation;
+        zm_player_open(&player,argv[1]); start=SDL_GetTicks64();
+        do {
+            ZMVideoFrame frame;
+            while(zm_player_take_frame(&player,&frame))av_frame_free(&frame.image);
+            zm_player_snapshot(&player,&state);
+            if(state.media_generation!=media_generation && state.loaded && state.video_frames && state.audio_frames)break;
+            SDL_Delay(1);
+        } while(SDL_GetTicks64()-start<10000 && !state.error[0]);
+        if(state.media_generation==media_generation || !state.loaded || !state.video_frames || !state.audio_frames || state.error[0])failed=1;
     }
     zm_subtitle_close(&reused);
     zm_player_destroy(&player); SDL_Quit();

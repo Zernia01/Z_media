@@ -9,7 +9,7 @@ typedef struct ZMSnapshot {
     int loaded, loading, paused, ended, has_audio, has_video;
     double position, duration;
     int volume, muted, width, height;
-    unsigned generation;
+    unsigned generation, media_generation;
     char path[ZM_PATH_CAPACITY], error[512], codec[80];
     unsigned video_frames, audio_frames;
     int subtitles_enabled, subtitle_delay_ms, subtitle_size, subtitle_style, subtitle_auto;

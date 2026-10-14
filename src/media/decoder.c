@@ -320,7 +320,7 @@ int zm_decode_worker(void *data) {
             SDL_AtomicSet(&p->change, 0); SDL_AtomicSet(&p->seek_pending, 0);
             SDL_AtomicSet(&p->audio_switch,0);
             if (p->audio) SDL_PauseAudioDevice(p->audio, 1);
-            zm_player_clear_locked(p); ++p->state.generation;
+            zm_player_clear_locked(p); ++p->state.generation; ++p->state.media_generation;
             p->state.loaded = 0; p->state.video_frames = p->state.audio_frames = 0;
             SDL_UnlockMutex(p->mutex);
             result = open_decoder(&d, p, path);
