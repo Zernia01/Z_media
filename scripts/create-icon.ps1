@@ -1,7 +1,7 @@
 $ErrorActionPreference='Stop'
 Add-Type -AssemblyName System.Drawing
 $root=Split-Path $PSScriptRoot -Parent
-$source=[System.Drawing.Image]::FromFile((Join-Path $root 'icon.png'))
+$source=[System.Drawing.Image]::FromFile((Join-Path $root 'logo.png'))
 $sizes=@(16,24,32,48,64,128,256)
 $images=@()
 try {
@@ -32,4 +32,4 @@ try {
         foreach($bytes in $images){$writer.Write([byte[]]$bytes)}
     } finally {$writer.Dispose();$file.Dispose()}
 } finally {$source.Dispose()}
-Write-Host 'Created resources/zm.ico (16–256 px) from icon.png'
+Write-Host 'Created resources/zm.ico (16–256 px) from logo.png'

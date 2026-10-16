@@ -1,16 +1,16 @@
 # Zernia media
 
-**ZM · 0.1.4 · Windows x64**
+**ZM · 0.1.5 · Windows x64**
 
-[0.1.4 설치기 다운로드](https://github.com/Zernia01/Z_media/releases/download/v0.1.4/ZM-0.1.4-setup-win64.exe) · [포터블 ZIP](https://github.com/Zernia01/Z_media/releases/download/v0.1.4/ZM-0.1.4-win64.zip) · [릴리스](https://github.com/Zernia01/Z_media/releases)
+[0.1.5 설치기 다운로드](https://github.com/Zernia01/Z_media/releases/download/v0.1.5/ZM-0.1.5-setup-win64.exe) · [포터블 ZIP](https://github.com/Zernia01/Z_media/releases/download/v0.1.5/ZM-0.1.5-win64.zip) · [릴리스](https://github.com/Zernia01/Z_media/releases)
 
 C로 작성한 데스크톱 미디어 플레이어의 초기 버전입니다. FFmpeg 공유 라이브러리를 직접 호출하고 SDL2로 창·영상·오디오를 출력합니다. 전체 작업지시서의 모든 기능이 완성된 버전은 아닙니다.
 
 ## 실행
 
-`dist/ZM-0.1.4-win64/ZM.exe`를 실행하세요. DLL과 `i18n`, `fonts` 폴더가 필요하므로 배포 폴더 전체를 함께 이동하거나 ZIP을 압축 해제해 사용하세요. Windows 10/11 x64용이며 Visual C++ x64 런타임 DLL을 함께 제공합니다.
+`dist/ZM-0.1.5-win64/ZM.exe`를 실행하세요. DLL과 `i18n`, `fonts` 폴더가 필요하므로 배포 폴더 전체를 함께 이동하거나 ZIP을 압축 해제해 사용하세요. Windows 10/11 x64용이며 Visual C++ x64 런타임 DLL을 함께 제공합니다.
 
-설치형은 `dist/ZM-0.1.4-setup-win64.exe`입니다. 사용자 계정의 `AppData/Local/Programs/Zernia media`에 설치하며, 관리자 권한 없이 시작 메뉴와 선택형 바탕화면 바로가기를 제공합니다. Windows 설치된 앱에서 제거할 수 있습니다.
+설치형은 `dist/ZM-0.1.5-setup-win64.exe`입니다. 사용자 계정의 `AppData/Local/Programs/Zernia media`에 설치하며, 관리자 권한 없이 시작 메뉴와 선택형 바탕화면 바로가기를 제공합니다. Windows 설치된 앱에서 제거할 수 있습니다.
 
 파일 열기 버튼, Ctrl+O 또는 드래그 앤 드롭으로 미디어를 엽니다. 여러 파일을 선택할 수 있으며, 파일 선택 창은 모든 파일을 표시하므로 확장자만으로 재생을 제한하지 않습니다. 실제 지원 범위는 FFmpeg 디코더에 따릅니다.
 
@@ -34,7 +34,7 @@ C로 작성한 데스크톱 미디어 플레이어의 초기 버전입니다. FF
 - 창 이동·크기 조절 중에도 UI 스레드의 Windows 타이머에서 영상을 갱신합니다. 모양 설정에서 계속 표시를 켜거나 끌 수 있습니다.
 - 정보 설정의 후원 버튼으로 `https://buymeacoffee.com/zernia`를 기본 브라우저에서 엽니다.
 - 새 업데이트 설치 확인창과 알림 ON/OFF. 시작 시 업데이트 확인과 새 설치기 자동 다운로드. 일반 설정에서 각각 ON/OFF, 정보 화면에서 수동 확인·다운로드·설치가 가능합니다. GitHub 릴리스의 SHA-256으로 검증한 설치기만 설치 버튼에 연결하며, 설치 실행은 버튼을 누른 뒤 진행합니다. [업데이트 및 릴리스 절차](docs/releasing.md).
-- 사용자 제공 `icon.png` 기반 Windows 실행 파일/창/작업표시줄 아이콘. `scripts/create-icon.ps1`로 ICO 리소스를 다시 만들 수 있습니다.
+- 사용자 제공 `logo.png` 기반 Windows 실행 파일/창/작업표시줄 아이콘. `scripts/create-icon.ps1`로 ICO 리소스를 다시 만들 수 있습니다.
 - 사용자 지정 단축키, 검색, 충돌 확인 후 교체/취소, 개별/전체 복원과 저장.
 - D3D11VA 하드웨어 디코딩 및 실패 시 소프트웨어 대체. 실제 하드웨어 사용 시 하단에 GPU 표시.
 - Unicode 파일 경로, DPI-aware 창, 오류 표시와 잘못된 설정 항목의 기본값 복구.
