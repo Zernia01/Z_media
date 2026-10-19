@@ -514,6 +514,9 @@ static void update_notifications(UI *u) {
 int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
     UI u = {0};
     Uint64 start;
+    Uint32 media_event=(Uint32)-1;
+    char *smoke_media=NULL;
+    int smoke_media_sent=0;
 
     int result = 0,smoke_controls=0,smoke_folder=0,smoke_events_sent=0,smoke_selected=-1,smoke_move=0,move_tested=0,smoke_fullscreen=0;
     double smoke_target=0;
@@ -531,12 +534,20 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
        respond to the first click instead of requiring a second one. */
     SDL_SetHint(SDL_HINT_MOUSE_FOCUS_CLICKTHROUGH, "1");
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO | SDL_INIT_TIMER) < 0) return 1;
+    media_event=SDL_RegisterEvents(1);
     if (TTF_Init() < 0) { SDL_Quit(); return 1; }
     zm_config_load(&u.config);
     if(!zm_update_init(&u.updater)) { result=1; goto cleanup; }
     if(smoke_seconds) {
         const char *lang=SDL_getenv("ZM_SMOKE_LANGUAGE");
         if(lang)SDL_strlcpy(u.config.language,lang,sizeof(u.config.language));
+        const char *media=SDL_getenv("ZM_SMOKE_MEDIA_PATH");
+        if(media) {
+            ZMPlaylist expected; int selected;
+            zm_playlist_init(&expected); selected=zm_playlist_load_folder(&expected,media);
+            smoke_media=SDL_strdup(selected>=0?expected.items[selected]:media);
+            zm_playlist_destroy(&expected);
+        }
         u.config.theme=smoke_option("ZM_SMOKE_LIGHT",u.config.theme)!=0;
         u.settings=smoke_option("ZM_SMOKE_PAGE",0);
         u.panel=smoke_option("ZM_SMOKE_PLAYLIST",0);
@@ -576,6 +587,9 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
     SDL_UnlockMutex(u.player.mutex);
     if (path)open_media(&u,path);
     u.running = 1; start = u.activity = SDL_GetTicks64();
+    if(!smoke_seconds && media_event!=(Uint32)-1 && !zm_window_accept_media(u.window,media_event,&u.config.reuse_window))
+        SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,"Could not register media forwarding");
+    zm_instance_ready();
     if(!smoke_seconds && u.config.update_auto_check)zm_update_check(&u.updater,u.config.update_auto_download);
     if(!zm_window_set_move_callback(u.window,move_frame,&u))SDL_LogWarn(SDL_LOG_CATEGORY_APPLICATION,"Could not install live move callback");
     if(smoke_fullscreen)fullscreen(&u);
@@ -585,6 +599,11 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
         SDL_GetWindowSize(u.window, &u.width, &u.height);
         SDL_RenderSetLogicalSize(u.renderer, u.width, u.height);
         zm_player_snapshot(&u.player, &u.state);
+        if(smoke_media && !smoke_media_sent && u.video && u.state.loaded && SDL_GetTicks64()-start>500) {
+            SDL_Event media; SDL_zero(media); media.type=media_event; media.user.data1=SDL_strdup(smoke_media);
+            if(!media.user.data1 || SDL_PushEvent(&media)<=0) { SDL_free(media.user.data1); result=9; }
+            else smoke_media_sent=1;
+        }
         if(smoke_fullscreen==2 && u.state.loaded && SDL_GetTicks64()-start>500) {
             if(!u.state.paused)zm_player_toggle_pause(&u.player);
             smoke_fullscreen=3;
@@ -632,6 +651,13 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
             smoke_events_sent=1;
         }
         while (SDL_PollEvent(&e)) {
+            if(e.type==media_event) {
+                char *media=e.user.data1;
+                u.settings=u.dropdown=0;
+                u.dragging=u.scrollbar_drag=0; SDL_CaptureMouse(SDL_FALSE);
+                open_media(&u,media); SDL_free(media);
+                continue;
+            }
             switch (e.type) {
             case SDL_QUIT: u.running = 0; break;
             case SDL_DROPBEGIN: u.drop_first=1; break;
@@ -695,6 +721,7 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
             if(smoke_auto_folder>=0 && (!u.folder_mode || u.panel!=(smoke_auto_folder!=0)))result=6;
             if(smoke_edge && (!edge_tested || !controls_hidden(&u)))result=7;
             if(smoke_seek && !smoke_seek_display(&u))result=8;
+            if(smoke_media && (!smoke_media_sent || strcmp(u.state.path,smoke_media) || u.state.media_generation<2))result=9;
             u.running = 0;
         }
         /* Vsync already paces normal rendering. Sleep only for a very fast
@@ -709,6 +736,12 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
     zm_window_clear_move_callback(u.window);
     zm_player_destroy(&u.player);
 cleanup:
+    SDL_free(smoke_media);
+    zm_window_stop_media(u.window);
+    if(media_event!=(Uint32)-1) {
+        SDL_Event pending;
+        while(SDL_PeepEvents(&pending,1,SDL_GETEVENT,media_event,media_event)>0)SDL_free(pending.user.data1);
+    }
     zm_update_destroy(&u.updater);
     zm_playlist_destroy(&u.playlist);
     if (result == 1) SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Zernia media", SDL_GetError(), u.window);

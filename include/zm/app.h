@@ -11,6 +11,7 @@ typedef struct ZMConfig {
     int auto_open_folder;
     int update_auto_check,update_auto_download;
     int update_notify;
+    int reuse_window;
 } ZMConfig;
 void zm_config_load(ZMConfig *c);
 void zm_config_save(const ZMConfig *c);
@@ -25,6 +26,10 @@ void zm_window_set_icon(SDL_Window *window);
 int zm_window_set_move_callback(SDL_Window *window, void (*callback)(void *), void *data);
 void zm_window_clear_move_callback(SDL_Window *window);
 int zm_window_test_move(SDL_Window *window, int milliseconds);
+int zm_instance_forward(const char *path, int enabled);
+void zm_instance_ready(void);
+int zm_window_accept_media(SDL_Window *window, Uint32 event_type, const int *enabled);
+void zm_window_stop_media(SDL_Window *window);
 int zm_register_associations(void);
 int zm_unregister_associations(void);
 int zm_open_default_apps(SDL_Window *window);

@@ -101,6 +101,12 @@ static void content(UI *u,SettingsLayout l,int x,int mouse_y,int apply) {
         choice(u,l,y+34,240,language_names[current],1,x,mouse_y,apply);
         y+=98; if(!apply)separator(u,l.view.x,y,l.view.w); y+=28;
         section(u,l.view.x,y,"playback_options",apply); y+=42;
+        if(check_row(u,l,y,"reuse_window","reuse_window_hint",u->config.reuse_window,x,mouse_y,apply)) {
+            u->config.reuse_window=!u->config.reuse_window;
+            /* The next process must see the choice before this window exits. */
+            zm_config_save(&u->config);
+        }
+        y+=76;
         if(check_row(u,l,y,"auto_open_folder","auto_open_folder_hint",u->config.auto_open_folder,x,mouse_y,apply))u->config.auto_open_folder=!u->config.auto_open_folder;
         y+=76;
         if(check_row(u,l,y,"subtitles_enabled",NULL,u->state.subtitles_enabled,x,mouse_y,apply))zm_player_subtitle_toggle(&u->player);

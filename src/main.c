@@ -28,7 +28,14 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE previous, PWSTR command, int s
     }
     LocalFree(args);
     SDL_SetMainReady();
+    if(!smoke && path) {
+        ZMConfig config; zm_config_load(&config);
+        if(zm_instance_forward(path,config.reuse_window)) {
+            SDL_free(path); SDL_free(capture); return 0;
+        }
+    }
     result = zm_app_run(path, smoke, capture);
+    zm_instance_ready();
     SDL_free(path); SDL_free(capture); return result;
 }
 #else

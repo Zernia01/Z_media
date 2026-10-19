@@ -22,6 +22,7 @@ void zm_config_load(ZMConfig *c) {
     c->auto_open_folder = 1;
     c->update_auto_check=c->update_auto_download=1;
     c->update_notify=1;
+    c->reuse_window=0;
     f = config_file("r");
     if (!f) return;
     while (fgets(line, sizeof(line), f)) {
@@ -41,6 +42,7 @@ void zm_config_load(ZMConfig *c) {
         else if (sscanf(line,"update_auto_check=%d",&value)==1 && value>=0 && value<=1)c->update_auto_check=value;
         else if (sscanf(line,"update_auto_download=%d",&value)==1 && value>=0 && value<=1)c->update_auto_download=value;
         else if (sscanf(line,"update_notify=%d",&value)==1 && value>=0 && value<=1)c->update_notify=value;
+        else if (sscanf(line,"reuse_window=%d",&value)==1 && value>=0 && value<=1)c->reuse_window=value;
         else if (strncmp(line, "language=", 9) == 0) {
             char *lang = line + 9;
             lang[strcspn(lang, "\r\n")] = '\0';
@@ -61,5 +63,6 @@ void zm_config_save(const ZMConfig *c) {
     fprintf(f,"auto_open_folder=%d\n",c->auto_open_folder);
     fprintf(f,"update_auto_check=%d\nupdate_auto_download=%d\n",c->update_auto_check,c->update_auto_download);
     fprintf(f,"update_notify=%d\n",c->update_notify);
+    fprintf(f,"reuse_window=%d\n",c->reuse_window);
     fclose(f);
 }
