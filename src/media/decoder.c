@@ -10,7 +10,9 @@
 #include <libavutil/channel_layout.h>
 #include <string.h>
 #include <math.h>
+#include <limits.h>
 #define ZM_AUDIO_LIMIT (48000u * 2u * sizeof(float) / 2u)
+#define ZM_AUDIO_LOW (48000u * 2u * sizeof(float) * 150u / 1000u)
 typedef struct Decoder {
     ZMPlayer *p;
     AVFormatContext *format;
@@ -22,6 +24,8 @@ typedef struct Decoder {
     int software_only;
     struct SwsContext *sws;
     SwrContext *swr;
+    float *audio_buffer;
+    unsigned audio_capacity;
     ZMSubtitleFilter subtitle;
     int vi, ai, eof, requested_audio;
     double origin, target, next_audio, next_video;
@@ -46,6 +50,7 @@ static void close_decoder(Decoder *d) {
     av_frame_free(&d->transfer);
     avcodec_free_context(&d->video); avcodec_free_context(&d->audio);
     sws_freeContext(d->sws); swr_free(&d->swr);
+    av_freep(&d->audio_buffer);
     zm_subtitle_close(&d->subtitle);
     avformat_close_input(&d->format);
     memset(d, 0, sizeof(*d));
@@ -180,10 +185,12 @@ static int output_video(Decoder *d) {
         int room;
         if(limit<1)limit=1; if(limit>ZM_FRAME_CAPACITY)limit=ZM_FRAME_CAPACITY;
         SDL_LockMutex(p->mutex);
-        /* A stalled renderer must not hold up audio on this shared worker.
-           Only discard frames that are already late; never future/paused ones. */
+        /* With little audio buffered, a due frame must not hold up audio for
+           another 80 ms. Keep future frames and paused/seek previews intact. */
+        double clock=zm_player_clock_locked(p);
+        int audio_low=p->state.has_audio && p->audio && SDL_GetQueuedAudioSize(p->audio)<ZM_AUDIO_LOW;
         if(p->count>=limit && !p->state.paused && !p->preview_pending &&
-           p->frames[p->read_index].pts<zm_player_clock_locked(p)-0.08) {
+           p->frames[p->read_index].pts<clock-(audio_low?0.0:0.08)) {
             av_frame_free(&p->frames[p->read_index].image);
             p->read_index=(p->read_index+1)%ZM_FRAME_CAPACITY; --p->count;
         }
@@ -201,7 +208,10 @@ static int output_video(Decoder *d) {
         source = d->transfer;
     }
     SDL_LockMutex(p->mutex); p->state.hardware_active = source != d->frame; SDL_UnlockMutex(p->mutex);
-    if(source->format==AV_PIX_FMT_YUV420P && source->linesize[0]>0 && source->linesize[1]>0 && source->linesize[2]>0) {
+    if (SDL_AtomicGet(&p->subtitle_pending) || (d->subtitle.graph && (d->subtitle.width != source->width || d->subtitle.height != source->height)))
+        refresh_subtitle(d, source->width, source->height);
+    SDL_LockMutex(p->mutex); int nv12=p->allow_nv12 && !d->subtitle.graph && source->format==AV_PIX_FMT_NV12; SDL_UnlockMutex(p->mutex);
+    if((source->format==AV_PIX_FMT_YUV420P || nv12) && source->linesize[0]>0 && source->linesize[1]>0 && (nv12 || source->linesize[2]>0)) {
         /* Keep a buffer reference instead of allocating and copying all planes.
            The subtitle filter makes its input writable when drawing is needed. */
         image=av_frame_clone(source);
@@ -218,8 +228,6 @@ static int output_video(Decoder *d) {
             av_frame_free(&image); return AVERROR_INVALIDDATA;
         }
     }
-    if (SDL_AtomicGet(&p->subtitle_pending) || (d->subtitle.graph && (d->subtitle.width != image->width || d->subtitle.height != image->height)))
-        refresh_subtitle(d, image->width, image->height);
     if (d->subtitle.graph) {
         int delay, result;
         SDL_LockMutex(p->mutex); delay = p->state.subtitle_delay_ms; SDL_UnlockMutex(p->mutex);
@@ -244,11 +252,13 @@ static int output_audio(Decoder *d) {
     int64_t delay = swr_get_delay(d->swr, d->audio->sample_rate);
     pts -= (double)delay / d->audio->sample_rate;
     capacity = (int)av_rescale_rnd(delay + d->frame->nb_samples, 48000, d->audio->sample_rate, AV_ROUND_UP);
-    buffer = av_malloc_array((size_t)capacity * 2u, sizeof(float));
+    if(capacity<=0 || (size_t)capacity>UINT_MAX/(2u*sizeof(float)))return AVERROR(ENOMEM);
+    av_fast_malloc(&d->audio_buffer,&d->audio_capacity,(size_t)capacity*2u*sizeof(float));
+    buffer=d->audio_buffer;
     if (!buffer) return AVERROR(ENOMEM);
     output = (uint8_t *)buffer;
     samples = swr_convert(d->swr, &output, capacity, (const uint8_t **)d->frame->extended_data, d->frame->nb_samples);
-    if (samples < 0) { av_free(buffer); return samples; }
+    if (samples < 0) return samples;
     d->next_audio = pts + (double)samples / 48000.0;
     if (pts < d->target) skip = (int)fmin((double)samples, ceil((d->target - pts) * 48000.0));
     while (!cancelled(d) && SDL_GetQueuedAudioSize(p->audio) > ZM_AUDIO_LIMIT) SDL_Delay(3);
@@ -264,7 +274,7 @@ static int output_audio(Decoder *d) {
             SDL_PauseAudioDevice(p->audio, p->state.paused);
     }
     SDL_UnlockMutex(p->mutex);
-    av_free(buffer); return result;
+    return result;
 }
 static int drain(Decoder *d, AVCodecContext *codec, int video) {
     int result;

@@ -23,6 +23,8 @@ typedef struct UI {
     ZMSnapshot state;
     int width, height, fullscreen, settings, dragging, running;
     int video_width, video_height;
+    Uint32 video_format;
+    unsigned nv12_uploads;
     unsigned generation, media_generation;
     int panel, panel_scroll, selected, handled_end, drop_first;
     int settings_scroll, settings_content_height, dropdown, scrollbar_drag;

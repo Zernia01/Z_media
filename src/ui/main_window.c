@@ -416,13 +416,22 @@ static void present_video(UI *u) {
     }
     if(latest.image) {
         frame=latest;
-        if(!u->video || u->video_width!=frame.image->width || u->video_height!=frame.image->height) {
-            SDL_DestroyTexture(u->video); u->video_width=frame.image->width; u->video_height=frame.image->height;
-            u->video=SDL_CreateTexture(u->renderer,SDL_PIXELFORMAT_IYUV,SDL_TEXTUREACCESS_STREAMING,u->video_width,u->video_height);
+        Uint32 format=frame.image->format==AV_PIX_FMT_NV12?SDL_PIXELFORMAT_NV12:SDL_PIXELFORMAT_IYUV;
+        if(!u->video || u->video_width!=frame.image->width || u->video_height!=frame.image->height || u->video_format!=format) {
+            SDL_Texture *texture=SDL_CreateTexture(u->renderer,format,SDL_TEXTUREACCESS_STREAMING,frame.image->width,frame.image->height);
+            if(texture) {
+                SDL_DestroyTexture(u->video); u->video=texture;
+                u->video_width=frame.image->width; u->video_height=frame.image->height; u->video_format=format;
+            } else if(format==SDL_PIXELFORMAT_NV12) {
+                SDL_LockMutex(u->player.mutex); u->player.allow_nv12=0; SDL_UnlockMutex(u->player.mutex);
+            }
         }
-        if(u->video) {
-            SDL_UpdateYUVTexture(u->video,NULL,frame.image->data[0],frame.image->linesize[0],frame.image->data[1],frame.image->linesize[1],frame.image->data[2],frame.image->linesize[2]);
-            ++u->presented_frames;
+        if(u->video && u->video_format==format && u->video_width==frame.image->width && u->video_height==frame.image->height) {
+            int uploaded=format==SDL_PIXELFORMAT_NV12?
+                SDL_UpdateNVTexture(u->video,NULL,frame.image->data[0],frame.image->linesize[0],frame.image->data[1],frame.image->linesize[1]):
+                SDL_UpdateYUVTexture(u->video,NULL,frame.image->data[0],frame.image->linesize[0],frame.image->data[1],frame.image->linesize[1],frame.image->data[2],frame.image->linesize[2]);
+            if(!uploaded) { ++u->presented_frames; if(format==SDL_PIXELFORMAT_NV12)++u->nv12_uploads; }
+            else if(format==SDL_PIXELFORMAT_NV12) { SDL_LockMutex(u->player.mutex); u->player.allow_nv12=0; SDL_UnlockMutex(u->player.mutex); }
         }
         av_frame_free(&frame.image);
     }
@@ -517,6 +526,7 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
     Uint32 media_event=(Uint32)-1;
     char *smoke_media=NULL;
     int smoke_media_sent=0;
+    int smoke_subtitle=smoke_seconds?smoke_option("ZM_SMOKE_SUBTITLE_SWITCH",0):0,subtitle_stage=0;
 
     int result = 0,smoke_controls=0,smoke_folder=0,smoke_events_sent=0,smoke_selected=-1,smoke_move=0,move_tested=0,smoke_fullscreen=0;
     double smoke_target=0;
@@ -575,10 +585,16 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
     zm_ui_reload_fonts(&u);
     if (!u.font || !u.heading) { result = 1; goto cleanup; }
     if (!zm_player_init(&u.player)) { result = 1; goto cleanup; }
+    {
+        SDL_Texture *probe=SDL_CreateTexture(u.renderer,SDL_PIXELFORMAT_NV12,SDL_TEXTUREACCESS_STREAMING,32,32);
+        SDL_LockMutex(u.player.mutex); u.player.allow_nv12=probe!=NULL; SDL_UnlockMutex(u.player.mutex);
+        SDL_DestroyTexture(probe);
+    }
     zm_player_volume(&u.player, u.config.volume);
     SDL_LockMutex(u.player.mutex);
     u.player.state.subtitles_enabled = u.config.subtitles_enabled;
     u.player.state.subtitle_auto = u.config.subtitle_auto;
+    if(smoke_subtitle) { u.player.state.subtitle_auto=0; u.player.state.subtitles_enabled=1; }
     u.player.state.subtitle_size = u.config.subtitle_size;
     u.player.state.subtitle_style = u.config.subtitle_style;
     u.player.state.subtitle_delay_ms = u.config.subtitle_delay_ms;
@@ -599,6 +615,12 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
         SDL_GetWindowSize(u.window, &u.width, &u.height);
         SDL_RenderSetLogicalSize(u.renderer, u.width, u.height);
         zm_player_snapshot(&u.player, &u.state);
+        if(smoke_subtitle && !subtitle_stage && u.video && u.state.loaded && SDL_GetTicks64()-start>500) {
+            zm_player_subtitle(&u.player,"test-media/sample.srt",-1); subtitle_stage=1;
+        }
+        if(smoke_subtitle==2 && subtitle_stage==1 && u.video_format==SDL_PIXELFORMAT_IYUV && SDL_GetTicks64()-start>1200) {
+            zm_player_subtitle_toggle(&u.player); subtitle_stage=2;
+        }
         if(smoke_media && !smoke_media_sent && u.video && u.state.loaded && SDL_GetTicks64()-start>500) {
             SDL_Event media; SDL_zero(media); media.type=media_event; media.user.data1=SDL_strdup(smoke_media);
             if(!media.user.data1 || SDL_PushEvent(&media)<=0) { SDL_free(media.user.data1); result=9; }
@@ -713,7 +735,7 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
         present_video(&u);
         if (smoke_seconds > 0 && SDL_GetTicks64() - start >= (Uint64)smoke_seconds * 1000u) {
             if (capture_path) capture(&u, capture_path);
-            SDL_Log("Smoke: loaded=%d video=%u audio=%u position=%.3f error=%s", u.state.loaded, u.state.video_frames, u.state.audio_frames, u.state.position, u.state.error);
+            SDL_Log("Smoke: loaded=%d video=%u audio=%u position=%.3f nv12=%u error=%s", u.state.loaded, u.state.video_frames, u.state.audio_frames, u.state.position,u.nv12_uploads,u.state.error);
             if (path && (!u.state.loaded || u.state.error[0] || (u.state.has_video && !u.state.video_frames) || (u.state.has_audio && !u.state.audio_frames))) result = 2;
             if(smoke_controls && (!smoke_events_sent || u.dragging || u.state.volume!=75 || !u.state.paused || fabs(u.state.position-smoke_target)>0.1))result=3;
             if(smoke_folder && (smoke_selected<0 || u.playlist.current!=smoke_selected || strcmp(u.state.path,u.playlist.items[smoke_selected])))result=4;
@@ -722,6 +744,10 @@ int zm_app_run(const char *path, int smoke_seconds, const char *capture_path) {
             if(smoke_edge && (!edge_tested || !controls_hidden(&u)))result=7;
             if(smoke_seek && !smoke_seek_display(&u))result=8;
             if(smoke_media && (!smoke_media_sent || strcmp(u.state.path,smoke_media) || u.state.media_generation<2))result=9;
+            if(smoke_subtitle) {
+                Uint32 expected=smoke_subtitle==2 && u.player.allow_nv12 && u.state.hardware_active?SDL_PIXELFORMAT_NV12:SDL_PIXELFORMAT_IYUV;
+                if(subtitle_stage!=smoke_subtitle || !u.video || u.video_format!=expected || u.state.subtitles_enabled!=(smoke_subtitle==1))result=10;
+            }
             u.running = 0;
         }
         /* Vsync already paces normal rendering. Sleep only for a very fast
