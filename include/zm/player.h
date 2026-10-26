@@ -28,7 +28,7 @@ typedef struct ZMPlayer {
     double seek_target, audio_end, base_pts;
     Uint64 base_ticks;
     ZMVideoFrame frames[ZM_FRAME_CAPACITY];
-    int read_index, count, preview_pending, allow_nv12;
+    int read_index, count, preview_pending, allow_nv12, audio_clock_valid;
 } ZMPlayer;
 int zm_player_init(ZMPlayer *p);
 void zm_player_destroy(ZMPlayer *p);

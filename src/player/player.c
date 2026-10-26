@@ -1,12 +1,27 @@
 #include "zm/player.h"
 #include <string.h>
+#include <math.h>
 
 double zm_player_clock_locked(ZMPlayer *p) {
     double clock;
+    Uint64 now=SDL_GetTicks64();
     if (p->state.paused || !p->state.loaded) return p->base_pts;
-    if (p->state.has_audio && p->audio && p->audio_end >= 0.0 && SDL_GetQueuedAudioSize(p->audio)) {
-        clock = p->audio_end - (double)SDL_GetQueuedAudioSize(p->audio) / (48000.0 * 2.0 * sizeof(float));
-        p->base_pts = clock; p->base_ticks = SDL_GetTicks64();
+    Uint32 queued=p->audio?SDL_GetQueuedAudioSize(p->audio):0;
+    if (p->state.has_audio && queued && p->audio_end >= 0.0) {
+        double reference=p->audio_end-(double)queued/(48000.0*2.0*sizeof(float));
+        double elapsed=(double)(now-p->base_ticks)/1000.0;
+        clock=p->base_pts+elapsed;
+        /* SDL's queued-byte count advances in device-sized blocks. Interpolate
+           between them and gently follow the audio clock instead of scheduling
+           30 fps video against a staircase of roughly 21 ms audio callbacks. */
+        if(!p->audio_clock_valid || fabs(reference-clock)>0.1)clock=reference;
+        else {
+            double correction=(reference-clock)*fmin(1.0,elapsed/0.5);
+            double bound=elapsed*0.1;
+            clock+=fmax(-bound,fmin(bound,correction));
+        }
+        p->audio_clock_valid=1;
+        p->base_pts=clock; p->base_ticks=now;
     } else {
         clock = p->base_pts + (double)(SDL_GetTicks64() - p->base_ticks) / 1000.0;
     }
@@ -18,6 +33,7 @@ void zm_player_clear_locked(ZMPlayer *p) {
     int i;
     for (i = 0; i < ZM_FRAME_CAPACITY; ++i) av_frame_free(&p->frames[i].image);
     p->count = p->read_index = 0;
+    p->audio_clock_valid=0;
     if (p->audio) SDL_ClearQueuedAudio(p->audio);
 }
 int zm_player_init(ZMPlayer *p) {

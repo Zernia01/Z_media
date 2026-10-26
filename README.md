@@ -1,16 +1,16 @@
 # Zernia media
 
-**ZM · 0.1.7 · Windows x64**
+**ZM · 0.1.8 · Windows x64**
 
-[0.1.7 설치기 다운로드](https://github.com/Zernia01/Z_media/releases/download/v0.1.7/ZM-0.1.7-setup-win64.exe) · [포터블 ZIP](https://github.com/Zernia01/Z_media/releases/download/v0.1.7/ZM-0.1.7-win64.zip) · [릴리스](https://github.com/Zernia01/Z_media/releases)
+[0.1.8 설치기 다운로드](https://github.com/Zernia01/Z_media/releases/download/v0.1.8/ZM-0.1.8-setup-win64.exe) · [포터블 ZIP](https://github.com/Zernia01/Z_media/releases/download/v0.1.8/ZM-0.1.8-win64.zip) · [릴리스](https://github.com/Zernia01/Z_media/releases)
 
 C로 작성한 데스크톱 미디어 플레이어의 초기 버전입니다. FFmpeg 공유 라이브러리를 직접 호출하고 SDL2로 창·영상·오디오를 출력합니다. 전체 작업지시서의 모든 기능이 완성된 버전은 아닙니다.
 
 ## 실행
 
-`dist/ZM-0.1.7-win64/ZM.exe`를 실행하세요. DLL과 `i18n`, `fonts` 폴더가 필요하므로 배포 폴더 전체를 함께 이동하거나 ZIP을 압축 해제해 사용하세요. Windows 10/11 x64용이며 Visual C++ x64 런타임 DLL을 함께 제공합니다.
+`dist/ZM-0.1.8-win64/ZM.exe`를 실행하세요. DLL과 `i18n`, `fonts` 폴더가 필요하므로 배포 폴더 전체를 함께 이동하거나 ZIP을 압축 해제해 사용하세요. Windows 10/11 x64용이며 Visual C++ x64 런타임 DLL을 함께 제공합니다.
 
-설치형은 `dist/ZM-0.1.7-setup-win64.exe`입니다. 사용자 계정의 `AppData/Local/Programs/Zernia media`에 설치하며, 관리자 권한 없이 시작 메뉴와 선택형 바탕화면 바로가기를 제공합니다. Windows 설치된 앱에서 제거할 수 있습니다.
+설치형은 `dist/ZM-0.1.8-setup-win64.exe`입니다. 사용자 계정의 `AppData/Local/Programs/Zernia media`에 설치하며, 관리자 권한 없이 시작 메뉴와 선택형 바탕화면 바로가기를 제공합니다. Windows 설치된 앱에서 제거할 수 있습니다.
 
 파일 열기 버튼, Ctrl+O 또는 드래그 앤 드롭으로 미디어를 엽니다. 여러 파일을 선택할 수 있으며, 파일 선택 창은 모든 파일을 표시하므로 확장자만으로 재생을 제한하지 않습니다. 실제 지원 범위는 FFmpeg 디코더에 따릅니다.
 

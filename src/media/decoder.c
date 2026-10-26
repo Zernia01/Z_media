@@ -13,12 +13,17 @@
 #include <limits.h>
 #define ZM_AUDIO_LIMIT (48000u * 2u * sizeof(float) / 2u)
 #define ZM_AUDIO_LOW (48000u * 2u * sizeof(float) * 150u / 1000u)
+#define ZM_PACKET_BUDGET (16u * 1024u * 1024u)
+
+typedef struct PacketNode { AVPacket packet; struct PacketNode *next; } PacketNode;
 typedef struct Decoder {
     ZMPlayer *p;
     AVFormatContext *format;
     AVCodecContext *video, *audio;
     AVPacket *packet;
+    AVPacket *ahead_packet;
     AVFrame *frame;
+    AVFrame *audio_frame;
     AVFrame *transfer;
     ZMHardware hardware;
     int software_only;
@@ -26,10 +31,23 @@ typedef struct Decoder {
     SwrContext *swr;
     float *audio_buffer;
     unsigned audio_capacity;
+    PacketNode *ahead_first,*ahead_last;
+    size_t ahead_bytes;
+    unsigned ahead_count;
+    int read_eof,read_error;
     ZMSubtitleFilter subtitle;
     int vi, ai, eof, requested_audio;
     double origin, target, next_audio, next_video;
 } Decoder;
+static int read_audio_ahead(Decoder *d);
+static void clear_read_ahead(Decoder *d) {
+    while(d->ahead_first) {
+        PacketNode *node=d->ahead_first; d->ahead_first=node->next;
+        av_packet_unref(&node->packet); SDL_free(node);
+    }
+    d->ahead_last=NULL; d->ahead_bytes=d->ahead_count=0;
+    d->read_eof=d->read_error=0;
+}
 static int cancelled(Decoder *d) {
     return SDL_AtomicGet(&d->p->quit) || SDL_AtomicGet(&d->p->change) || SDL_AtomicGet(&d->p->seek_pending);
 }
@@ -46,6 +64,8 @@ static void error_message(ZMPlayer *p, const char *context, int code) {
     SDL_UnlockMutex(p->mutex);
 }
 static void close_decoder(Decoder *d) {
+    clear_read_ahead(d);
+    av_packet_free(&d->ahead_packet); av_frame_free(&d->audio_frame);
     av_packet_free(&d->packet); av_frame_free(&d->frame);
     av_frame_free(&d->transfer);
     avcodec_free_context(&d->video); avcodec_free_context(&d->audio);
@@ -113,8 +133,9 @@ static int open_decoder(Decoder *d, ZMPlayer *p, const char *path) {
         if (result < 0) return result;
     }
     d->packet = av_packet_alloc(); d->frame = av_frame_alloc();
+    d->ahead_packet=av_packet_alloc(); d->audio_frame=av_frame_alloc();
     d->transfer = av_frame_alloc();
-    if (!d->packet || !d->frame || !d->transfer) return AVERROR(ENOMEM);
+    if (!d->packet || !d->frame || !d->transfer || !d->ahead_packet || !d->audio_frame) return AVERROR(ENOMEM);
     SDL_LockMutex(p->mutex);
     subtitle_auto = p->state.subtitle_auto; SDL_strlcpy(language,p->state.preferred_language,sizeof(language));
     SDL_UnlockMutex(p->mutex);
@@ -189,6 +210,7 @@ static int output_video(Decoder *d) {
            another 80 ms. Keep future frames and paused/seek previews intact. */
         double clock=zm_player_clock_locked(p);
         int audio_low=p->state.has_audio && p->audio && SDL_GetQueuedAudioSize(p->audio)<ZM_AUDIO_LOW;
+        int refill_audio=audio_low && !p->state.paused;
         if(p->count>=limit && !p->state.paused && !p->preview_pending &&
            p->frames[p->read_index].pts<clock-(audio_low?0.0:0.08)) {
             av_frame_free(&p->frames[p->read_index].image);
@@ -197,6 +219,12 @@ static int output_video(Decoder *d) {
         room = p->count < limit;
         SDL_UnlockMutex(p->mutex);
         if (room) break;
+        /* Some MP4s store half a second of video before the next audio chunk.
+           Read through that chunk without decoding more future video frames. */
+        if(refill_audio) {
+            int result=read_audio_ahead(d);
+            if(result<0)return result;
+        }
         SDL_Delay(3);
     }
     if (cancelled(d)) return 0;
@@ -295,6 +323,31 @@ static int decode_packet(Decoder *d, AVCodecContext *codec, int video, AVPacket 
     if (result < 0 && result != AVERROR_EOF) return result;
     return drain(d, codec, video);
 }
+static int read_audio_ahead(Decoder *d) {
+    unsigned scanned=0;
+    if(!d->audio || d->read_eof)return 0;
+    while(!cancelled(d) && d->ahead_count<512 && d->ahead_bytes<ZM_PACKET_BUDGET && scanned++<64) {
+        int result=av_read_frame(d->format,d->ahead_packet);
+        if(result==AVERROR(EAGAIN))return 0;
+        if(result<0) {
+            if(!cancelled(d)) { d->read_eof=1; if(result!=AVERROR_EOF)d->read_error=result; }
+            return 0;
+        }
+        if(d->ahead_packet->stream_index==d->vi) {
+            PacketNode *node=SDL_calloc(1,sizeof(*node));
+            if(!node) { av_packet_unref(d->ahead_packet); return AVERROR(ENOMEM); }
+            av_packet_move_ref(&node->packet,d->ahead_packet);
+            if(d->ahead_last)d->ahead_last->next=node; else d->ahead_first=node;
+            d->ahead_last=node; d->ahead_bytes+=(size_t)node->packet.size; ++d->ahead_count;
+        } else if(d->ahead_packet->stream_index==d->ai) {
+            /* Audio decoding must not overwrite the video frame waiting for room. */
+            AVFrame *video_frame=d->frame; d->frame=d->audio_frame;
+            result=decode_packet(d,d->audio,0,d->ahead_packet);
+            d->frame=video_frame; av_packet_unref(d->ahead_packet); return result;
+        } else av_packet_unref(d->ahead_packet);
+    }
+    return 0;
+}
 static void seek_decoder(Decoder *d) {
     ZMPlayer *p = d->p;
     double target;
@@ -307,6 +360,7 @@ static void seek_decoder(Decoder *d) {
     if (d->video) avcodec_flush_buffers(d->video);
     if (d->audio) { avcodec_flush_buffers(d->audio); swr_close(d->swr); swr_init(d->swr); }
     av_packet_unref(d->packet);
+    av_packet_unref(d->ahead_packet); clear_read_ahead(d);
     d->target = target; d->next_audio = d->next_video = target; d->eof = 0;
     /* The subtitle graph renders by timestamp; seeking does not change its
        track/style. Keep loaded cues/fonts instead of rereading the whole media. */
@@ -362,7 +416,12 @@ int zm_decode_worker(void *data) {
             SDL_UnlockMutex(p->mutex);
             SDL_Delay(10); continue;
         }
-        result = av_read_frame(d.format, d.packet);
+        if(d.ahead_first) {
+            PacketNode *node=d.ahead_first; d.ahead_first=node->next;
+            if(!d.ahead_first)d.ahead_last=NULL;
+            d.ahead_bytes-=(size_t)node->packet.size; --d.ahead_count;
+            av_packet_move_ref(d.packet,&node->packet); SDL_free(node); result=0;
+        } else result=d.read_error?d.read_error:d.read_eof?AVERROR_EOF:av_read_frame(d.format,d.packet);
         if (result == AVERROR_EOF) {
             if (d.video) { result = decode_packet(&d, d.video, 1, NULL); if (result < 0) error_message(p, "Video flush", result); }
             if (d.audio && !cancelled(&d)) { result = decode_packet(&d, d.audio, 0, NULL); if (result < 0) error_message(p, "Audio flush", result); }
