@@ -9,7 +9,7 @@
 
 static int run_test(int argc,char **argv) {
     ZMPlayer player; ZMSnapshot state={0};
-    Uint64 start,last=0,max_gap=0;
+    Uint64 start,last=0,max_gap=0,last_poll=0,max_poll=0;
     unsigned frames=0,underruns=0;
     double sum=0,squares=0; unsigned intervals=0;
     int empty_before=0,failed=0,seconds=argc>2?atoi(argv[2]):12;
@@ -20,9 +20,11 @@ static int run_test(int argc,char **argv) {
     zm_player_open(&player,argv[1]); start=SDL_GetTicks64();
     while(SDL_GetTicks64()-start<(Uint64)seconds*1000 && !state.error[0]) {
         ZMVideoFrame frame; Uint64 now=SDL_GetTicks64(); int shown=0;
+        if(last_poll && now-last_poll>max_poll)max_poll=now-last_poll; last_poll=now;
         while(zm_player_take_frame(&player,&frame)) { av_frame_free(&frame.image); ++frames; shown=1; }
         zm_player_snapshot(&player,&state);
         if(shown) {
+            if(last && now-last>140)printf("Video gap: position=%.3f gap_ms=%llu poll_ms=%llu\n",state.position,(unsigned long long)(now-last),(unsigned long long)max_poll);
             if(last) { double gap=(double)(now-last); if(now-last>max_gap)max_gap=now-last; sum+=gap; squares+=gap*gap; ++intervals; }
             last=now;
         }
@@ -34,7 +36,7 @@ static int run_test(int argc,char **argv) {
         SDL_Delay(2);
     }
     double jitter=intervals?sqrt(fmax(0,squares/intervals-(sum/intervals)*(sum/intervals))):0.0;
-    printf("Cadence: seconds=%d frames=%u max_gap_ms=%llu jitter_ms=%.3f audio_underruns=%u position=%.3f gpu=%d error=%s\n",seconds,frames,(unsigned long long)max_gap,jitter,underruns,state.position,state.hardware_active,state.error);
+    printf("Cadence: seconds=%d frames=%u max_gap_ms=%llu jitter_ms=%.3f audio_underruns=%u position=%.3f gpu=%d poll_ms=%llu error=%s\n",seconds,frames,(unsigned long long)max_gap,jitter,underruns,state.position,state.hardware_active,(unsigned long long)max_poll,state.error);
     if(!state.loaded || frames<(unsigned)(seconds*10) || state.error[0] || max_gap>140 || jitter>8.0 || underruns)failed=1;
     zm_player_destroy(&player); SDL_Quit(); return failed;
 }

@@ -312,8 +312,15 @@ static int output_audio(Decoder *d) {
     d->next_audio = pts + (double)samples / 48000.0;
     if (pts < d->target) skip = (int)fmin((double)samples, ceil((d->target - pts) * 48000.0));
     while (!cancelled(d) && SDL_GetQueuedAudioSize(p->audio) > ZM_AUDIO_LIMIT) {
-        int needs_video;
-        SDL_LockMutex(p->mutex); needs_video=d->video && !p->state.paused && p->count<2; SDL_UnlockMutex(p->mutex);
+        int needs_video,target=ZM_FRAME_CAPACITY/2;
+        if(d->video) {
+            size_t bytes=(size_t)d->video->width*(size_t)d->video->height*3u/2u;
+            int limit=bytes?(int)((64u*1024u*1024u)/bytes):1;
+            if(target>=limit)target=limit>1?limit-1:1;
+        }
+        /* Leave enough decoded video for HEVC reorder/driver delays instead
+           of waiting until only two frames (about 83 ms at 24 fps) remain. */
+        SDL_LockMutex(p->mutex); needs_video=d->video && !p->state.paused && p->count<target; SDL_UnlockMutex(p->mutex);
         /* MKV/FLAC blocks may contain more than our audio watermark before
            the next video packet. Keep supplying video while audio drains. */
         if(needs_video) { result=read_stream_ahead(d,1); if(result<0)return result; }
